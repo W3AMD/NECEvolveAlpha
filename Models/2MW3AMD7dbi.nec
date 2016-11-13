@@ -1,0 +1,11 @@
+CM 
+CE
+SY height=0.970223
+SY baseheight=10
+GW	1	1	0	0	baseheight-(height/2)	0	0	baseheight+(height/2)	0.0021
+GE	1
+GN	2	0	0	0	4	0.003
+EK
+EX	0	1	1	0	1	0	0
+FR	0	0	0	0	146	0
+EN

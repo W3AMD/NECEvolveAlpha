@@ -711,8 +711,19 @@ void __fastcall TForm1::MakeClick(TObject *Sender) {
 			if (Error)
 				return;
 		}
-		// check for cube etch model
+		// check for delta model
 		else if (Designform->AntennaType->ItemIndex == 1) {
+			// build the model
+			bool Error = BuildDeltaModel(&MaxHeight, &MinHeight, &MaxXPosition, &MaxYPosition,
+			  &resolution/*resolution*/, &MaxFeedHeightPosition, &Frequency, &WireDiameter, &Scale, BandNumber,
+			  &BandBottom, &BandLength);
+			if (Error) {
+				// error exit
+				return;
+			}
+		}
+		// check for cube etch model
+		else if (Designform->AntennaType->ItemIndex == 2) {
 			/*TODO : Check that the feed point height is within or at the minimum and
 			 maximum height otherwise it will never be found in the cube middle check*/
 			// build cube model
@@ -799,7 +810,7 @@ void __fastcall TForm1::MakeClick(TObject *Sender) {
 					}
 				} // update displays
 				// updte wire count display
-				TotalCount->Caption = IntToStr((__int64)(Nec_Counts[0].WireCount) / 2);
+				TotalCount->Caption = IntToStr((__int64)Nec_Counts[0].WireCount);
 				// check for segment errors
 				// this first time at this point there is only the feedpoint
 				// in the first temporary file
@@ -855,13 +866,12 @@ void __fastcall TForm1::MakeClick(TObject *Sender) {
 					// we need to update the SWR and update the displays
 					Nec_Radiation[0].ThetaAngleCount = 1;
 					Nec_Radiation[0].PhiAngleCount = 1;
-					ProgressBar1->Max = (Nec_Counts[0].WireCount - 1) / 2;
+					ProgressBar1->Max = Nec_Counts[0].WireCount - 1;
 
 					// loop through one less (the feed point)
 					// divide by 2 to account for wires will be enabled as pairs
-					unsigned int totalwires = Nec_Counts[0].WireCount;
+					unsigned int totalwires = Nec_Counts[0].WireCount - 1;
 					for (unsigned int wireloop = 1; ; wireloop += 2) {
-						ProgressBar1->Position = wireloop;
 						unsigned int iteration = wireloop / 2;
 						// update the graphs
 						// check if this delta X is closer to zero
@@ -885,7 +895,7 @@ void __fastcall TForm1::MakeClick(TObject *Sender) {
 						Nec_Wires[wireloop].Enabled = false;
 						Nec_Wires[wireloop + 1].Enabled = false;
 						unsigned int loopplus2 = wireloop + 2;
-						unsigned int comparedone = (totalwires - 1) / 2;
+						unsigned int comparedone = totalwires;
 						// check if there are more wire sets
 						if (loopplus2 <= comparedone) {
 							// prepare the next wires
@@ -954,6 +964,8 @@ void __fastcall TForm1::MakeClick(TObject *Sender) {
 							ErrorMemo->Lines->Add("Cancel detected. Will show best find.");
 							break; // exit
 						}
+						//ErrorMemo->Lines->Add(IntToStr((__int64)wireloop + 2));
+						ProgressBar1->Position = wireloop + 2;
 						Application->ProcessMessages();
 					}
 					if (SWRCompare > 100) {
@@ -969,7 +981,172 @@ void __fastcall TForm1::MakeClick(TObject *Sender) {
 					Nec_Wires[BestWireID + 1].Enabled = true;
 					// run the sweep we are done
 					Done = true;
-					ErrorMemo->Lines->Add(AnsiString("Run Band Sweep"));
+					ErrorMemo->Lines->Add(AnsiString("Running Band Sweep"));
+					Nec_Radiation[0].ThetaAngleCount = 19;
+					Nec_Radiation[0].PhiAngleCount = 73;
+					Nec_Frequency[0].FrequencyMHz = BandBottom;
+					ErrorMemo->Lines->Add(AnsiString("Band Bottom:" + FormatFloat("0.00", BandBottom)));
+					Nec_Frequency[0].BandWidth = BandLength;
+					ErrorMemo->Lines->Add(AnsiString("Band Length:" + FormatFloat("0.00", BandLength)));
+					Nec_Frequency[0].FrequencyStepSize = BandLength / 7;
+					ErrorMemo->Lines->Add(AnsiString("Band Step Size:" + FormatFloat("0.00",
+					  Nec_Frequency[0].FrequencyStepSize)));
+					Nec_Frequency[0].FrequencySteps =
+					  Nec_Frequency[0].BandWidth / Nec_Frequency[0].FrequencyStepSize + 1;
+					ErrorMemo->Lines->Add(AnsiString("Band Steps:" + FormatFloat("0.00",
+					  Nec_Frequency[0].FrequencySteps)));
+					// save the file
+					WideString tempfilename = CreateNECFile(Nec_Counts, Nec_Wires, Nec_Ground, Nec_Loads, Nec_Grounds,
+					  Nec_Excitation, Nec_Frequency, Nec_Radiation);
+					ErrorMemo->Lines->Add("Display Results");
+					try {
+						int intresult = OpenNECFile(tempfilename, &file_results, UpdateSegmentGraph);
+					}
+
+					catch (Exception &E) {
+						ErrorMemo->Lines->Add(AnsiString(E.Message));
+						ShowMessage("Unexpected program error. See status log. Terminating");
+						Close();
+						return;
+					}
+					Cancel->Tag = 1;
+					break;
+				}
+
+				//
+				// delta model
+				//
+
+				else if (Designform->AntennaType->ItemIndex == 1) {
+					// first time here the feedpoint and the first two wires are enabled
+					// we need to update the SWR and update the displays
+					Nec_Radiation[0].ThetaAngleCount = 1;
+					Nec_Radiation[0].PhiAngleCount = 1;
+					ProgressBar1->Max = Nec_Counts[0].WireCount - 1;
+
+					// loop through one less (the feed point)
+					// divide by 2 to account for wires will be enabled as pairs
+					unsigned int totalwires = Nec_Counts[0].WireCount - 1;
+					for (unsigned int wireloop = 0; ; wireloop += 3) {
+						unsigned int iteration = wireloop / 3;
+						// update the graphs
+						// check if this delta X is closer to zero
+						double deltaSWR = file_results.VSWR - 50;
+						// update the new best wire ID
+						if (deltaSWR < SWRCompare) {
+							SWRCompare = deltaSWR;
+							BestWireID = wireloop;
+							SWRTarget->Caption = FormatFloat("0.00", file_results.VSWR);
+							// add this SWR to the running SWR plot graph
+							Series5->AddXY(iteration, file_results.VSWR, "", clTeeColor);
+							// need to add the X and R graphs point here too
+							Series6->AddXY(iteration, file_results.R, "", clTeeColor);
+							Series7->AddXY(iteration, file_results.X, "", clTeeColor);
+							UpdateSegmentGraph = true;
+						}
+						else {
+							UpdateSegmentGraph = true; // always show antenna model during debug
+						}
+						// disable these wires
+						Nec_Wires[wireloop].Enabled = false;
+						Nec_Wires[wireloop + 1].Enabled = false;
+						Nec_Wires[wireloop + 2].Enabled = false;
+						unsigned int loopplus3 = wireloop + 3;
+						// check if there are more wire sets
+						if (loopplus3 <= totalwires) {
+							// prepare the next wires
+							Nec_Wires[wireloop + 3].Enabled = true;
+							Nec_Wires[wireloop + 4].Enabled = true;
+							Nec_Wires[wireloop + 5].Enabled = true;
+							Nec_Excitation[0].WireID = wireloop + 3; // dipole model feed point wire is always zero
+							// chose the middle segment
+							Nec_Excitation[0].SourceTag = (Nec_Wires[wireloop + 3].Segments / 2) + 1;
+						}
+						else {
+							// exit we are done
+							break;
+						}
+						// create the new NEC file
+						// save the file
+						WideString tempfilename = CreateNECFile(Nec_Counts, Nec_Wires, Nec_Ground, Nec_Loads,
+						  Nec_Grounds, Nec_Excitation, Nec_Frequency, Nec_Radiation);
+						// and evaluate it
+						if (tempfilename == "") {
+							// error during file rename unable to continue so stop
+							ErrorMemo->Lines->Add("Failure to rename file. Have to halt.");
+							ShowMessage("Rename file error. Terminating");
+							return;
+						}
+						// we created a temp file, we will need to delete later
+						DeleteFileWhenDone = true;
+						try {
+							int intresult = OpenNECFile(tempfilename, &file_results, UpdateSegmentGraph);
+						}
+
+						catch (Exception &E) {
+							ErrorMemo->Lines->Add(AnsiString(E.Message));
+							ShowMessage("Unexpected program error. See status log. Terminating");
+							Close();
+							return;
+						}
+
+						// otherwise delete the temp file and output file
+						if (DeleteFileWhenDone) {
+							for (int loop = 0; loop < 10; loop++) {
+								bool result = DeleteFile(tempfilename);
+								if (result)
+									break;
+								if (loop == 9) {
+									ErrorMemo->Lines->Add("Failed delete temp file " + tempfilename);
+									ShowMessage("Unable to delete temp file " + tempfilename);
+									Close();
+									return;
+								}
+								Sleep(1500);
+								Application->ProcessMessages();
+							}
+							AnsiString outfile = ChangeFileExt(tempfilename, ".out");
+							for (int loop = 0; loop < 10; loop++) {
+								bool result = DeleteFile(outfile);
+								if (result)
+									break;
+								if (loop == 9) {
+									ErrorMemo->Lines->Add("Failed delete output file " + outfile);
+									ShowMessage("Unable to delete output file");
+									Close();
+									return;
+								}
+								Sleep(1500);
+								Application->ProcessMessages();
+							}
+						} // update displays
+						// check if user cancelled
+						if (Cancel->Tag == 1) {
+							ErrorMemo->Lines->Add("Cancel detected. Will show best find.");
+							break; // exit
+						}
+						//ErrorMemo->Lines->Add(IntToStr((__int64)wireloop + 3));
+						ProgressBar1->Position = wireloop + 3;
+						Application->ProcessMessages();
+					}
+					if (SWRCompare > 100) {
+						ErrorMemo->Lines->Add("No good model found yet, exiting.");
+						return;
+					}
+					ProgressBar1->Position = ProgressBar1->Max;
+					// clear the wire graph display
+					Series2->Clear(); // design green dots
+					Series9->Clear(); // swr red dots
+					// select the best wire set
+					Nec_Wires[BestWireID].Enabled = true;
+					Nec_Wires[BestWireID + 1].Enabled = true;
+					Nec_Wires[BestWireID + 2].Enabled = true;
+					Nec_Excitation[0].WireID = BestWireID; // dipole model feed point wire is always zero
+					// chose the middle segment
+					Nec_Excitation[0].SourceTag = (Nec_Wires[BestWireID].Segments / 2) + 1;
+					// run the sweep we are done
+					Done = true;
+					ErrorMemo->Lines->Add(AnsiString("Running Band Sweep"));
 					Nec_Radiation[0].ThetaAngleCount = 19;
 					Nec_Radiation[0].PhiAngleCount = 73;
 					Nec_Frequency[0].FrequencyMHz = BandBottom;
@@ -1711,29 +1888,20 @@ double __fastcall TForm1::WireLength(double X1, double Y1, double Z1, double X2,
 }
 
 unsigned int __fastcall TForm1::CalculateMinimumNumSegments(double FrequencyMHz, double* wirelength) {
-	// check wire length to see if 1 segment would even work
+	// this function calculates the maximum number of segments the wire can be for this
+	// frequency at this length
 	double fr = (1.0e+6 * FrequencyMHz) / em::speed_of_light();
-	double SegLengthNeeded = 0.020 * (em::speed_of_light() / (FrequencyMHz * 1.0E+6));
-	if (*wirelength * fr < 0.02) {
-		/*TODO :
-		 this needs further investigation as to why factoring additional 1% is needed*/ *wirelength = SegLengthNeeded;
-		// * 1.05;
+	double SegLengthNeeded = 0.021 * (em::speed_of_light() / (FrequencyMHz * 1.0E+6));
+	double comparevalue = *wirelength * fr;
+	if (comparevalue < 0.02) {
+		*wirelength = SegLengthNeeded;
 		return 0; // return indication that wire size needs to change
 	}
 
 	double NumberOfSegmentsNeeded = double(*wirelength / SegLengthNeeded);
 	int NumSegmentsNeeded = NumberOfSegmentsNeeded;
-	if (NumSegmentsNeeded < NumberOfSegmentsNeeded) {
-		NumSegmentsNeeded++;
-	}
 	double SegLenCheck = *wirelength / NumSegmentsNeeded * fr;
-	/*
-	 if (NumSegmentsNeeded < 2) {
-	 throw Exception("Segment length too small in CalculateMinimumNumSegments");
-	 }
-	 // all should be scaled for 2 segments (hopefully)
-	 NumSegmentsNeeded = 2;
-	 */return NumSegmentsNeeded;
+	return NumSegmentsNeeded;
 }
 
 // ---------------------------------------------------------------------------
@@ -1935,73 +2103,8 @@ bool __fastcall TForm1::BuildDipoleModel(double* MaxHeightMeters, double* MinHei
 		}
 	}
 
-	AnsiString BandName;
-	switch (BandSelection) {
-	case BAND_160: {
-			BandName = "160M";
-			break;
-		}
-	case BAND_80: {
-			BandName = "80M";
-			break;
-		}
-	case BAND_60: {
-			BandName = "60M";
-			break;
-		}
-	case BAND_40: {
-			BandName = "40M";
-			break;
-		}
-	case BAND_30: {
-			BandName = "30M";
-			break;
-		}
-	case BAND_20: {
-			BandName = "20M";
-			break;
-		}
-	case BAND_17: {
-			BandName = "17M";
-			break;
-		}
-	case BAND_15: {
-			BandName = "15M";
-			break;
-		}
-	case BAND_12: {
-			BandName = "12M";
-			break;
-		}
-	case BAND_10: {
-			BandName = "10M";
-			break;
-		}
-	case BAND_6: {
-			BandName = "6M";
-			break;
-		}
-	case BAND_2: {
-			BandName = "2M";
-			break;
-		}
-	case BAND_1_25: {
-			BandName = "1.25M";
-			break;
-		}
-	case BAND_70cm: {
-			BandName = "70cm";
-			break;
-		}
-	case BAND_33cm: {
-			BandName = "33cm";
-			break;
-		}
-	case BAND_23cm: {
-			BandName = "23cm";
-			break;
-		}
-	}
+	// get the band name string
+	AnsiString BandName = GetBandName(BandSelection);
 
 	unsigned int WireCount = 0; // count for number of wires in array (always 1 starting for feedpoint)
 	// if the wire array already exists delete it
@@ -2029,10 +2132,10 @@ bool __fastcall TForm1::BuildDipoleModel(double* MaxHeightMeters, double* MinHei
 	// must calculate the segment sizing on the lowest frequency which will be tested
 	// which is the low part of the band
 	/*TODO :
-	 Need to investigate why 1% margin is needed here for the bottom of the band
+	 Need to investigate why 5% margin is needed here for the bottom of the band
 	 because the model run can work for 60M default until the band sweep
 	 is done after which the segment size is <.02*/
-	unsigned int FeedMinSegs = CalculateMinimumNumSegments(*BandBottom * 0.95, &FeedLength);
+	unsigned int FeedMinSegs = CalculateMinimumNumSegments(*BandBottom, &FeedLength);
 	// check if the feed length is too small
 	if (FeedMinSegs == 0) {
 		// if it is for now we have no choice but to extend it's size
@@ -2095,9 +2198,8 @@ bool __fastcall TForm1::BuildDipoleModel(double* MaxHeightMeters, double* MinHei
 	Nec_Wires[0].Diameter = *WireDiameter;
 	Nec_Wires[0].Enabled = true;
 
+	WireCount = 1;
 	// loop through all the X, Y, and Z combinations
-	WireCount++;
-	// X and Y are divided by 2 because we are mirroring the image
 	for (double Z = *MinHeightMeters; Z <= *MaxHeightMeters; Z += *resolution) {
 		for (double Y = 0; Y <= (*MaxDepthMeters / 2); Y += *resolution) {
 			// add resolution right away to X to now allow the feedpoint itself
@@ -2187,7 +2289,8 @@ bool __fastcall TForm1::BuildDipoleModel(double* MaxHeightMeters, double* MinHei
 	// set for frequency sweep
 	Nec_Frequency[0].StepType = 0;
 	const double Diameter = *WireDiameter;
-	/*TODO : Make sure to set the correct frequency choices*/Nec_Frequency[0].FrequencyMHz = *Frequency;
+	/*TODO : Make sure to set the correct frequency choices*/
+	Nec_Frequency[0].FrequencyMHz = *Frequency;
 	Nec_Frequency[0].BandWidth = 0.0;
 	Nec_Frequency[0].FrequencyStepSize = 1.00;
 	if (Nec_Frequency[0].FrequencyStepSize) {
@@ -2433,12 +2536,260 @@ void TForm1::SetBandParameters(unsigned int BandSelection, double* BandBottom, d
 	}
 }
 
+AnsiString TForm1::GetBandName(unsigned int BandSelection) {
+	AnsiString BandName;
+	switch (BandSelection) {
+	case BAND_160: {
+			BandName = "160M";
+			break;
+		}
+	case BAND_80: {
+			BandName = "80M";
+			break;
+		}
+	case BAND_60: {
+			BandName = "60M";
+			break;
+		}
+	case BAND_40: {
+			BandName = "40M";
+			break;
+		}
+	case BAND_30: {
+			BandName = "30M";
+			break;
+		}
+	case BAND_20: {
+			BandName = "20M";
+			break;
+		}
+	case BAND_17: {
+			BandName = "17M";
+			break;
+		}
+	case BAND_15: {
+			BandName = "15M";
+			break;
+		}
+	case BAND_12: {
+			BandName = "12M";
+			break;
+		}
+	case BAND_10: {
+			BandName = "10M";
+			break;
+		}
+	case BAND_6: {
+			BandName = "6M";
+			break;
+		}
+	case BAND_2: {
+			BandName = "2M";
+			break;
+		}
+	case BAND_1_25: {
+			BandName = "1.25M";
+			break;
+		}
+	case BAND_70cm: {
+			BandName = "70cm";
+			break;
+		}
+	case BAND_33cm: {
+			BandName = "33cm";
+			break;
+		}
+	case BAND_23cm: {
+			BandName = "23cm";
+			break;
+		}
+	}
+	return BandName;
+}
+
+// ---------------------------------------------------------------------------
+bool __fastcall TForm1::BuildDeltaModel(double* MaxHeightMeters, double* MinHeightMeters, double* MaxWidthMeters,
+  double* MaxDepthMeters, double* resolution, double* FeedPointHeight, double* Frequency, double* WireDiameter,
+  double* Scale, unsigned int BandSelection, double* BandBottom, double* BandLength) {
+	// the delta model is center fed from the bottom triangle
+	// it's top point and side points are moveable in the X,Y,Z
+	// so we will create all the possible combinations
+	// the feed point will always be at X=0, Y=0
+	// the feed wire is mirrored on the X axis
+	GetInitialBandResolution(BandSelection, resolution, Scale);
+
+	// adjust the inputs to M. CM is necessary
+	AdjustUserInputSizeByScale(MaxWidthMeters, MaxDepthMeters, MaxHeightMeters, MinHeightMeters, FeedPointHeight,
+	  Scale);
+	// set the band width parameters used later for band sweep
+	SetBandParameters(BandSelection, BandBottom, BandLength, Frequency, resolution, WireDiameter, Scale);
+	// get the band name string
+	AnsiString BandName = GetBandName(BandSelection);
+
+	// build the delta model
+	unsigned int WireCount = 0; // count for number of wires in array (always 1 starting for feedpoint)
+	// if the wire array already exists delete it
+	if (Nec_Wires != NULL) {
+		delete[]Nec_Wires;
+		Nec_Wires = NULL;
+	}
+
+	// find out how many possible combinations there are to set up the wire matrix
+	unsigned int MatrixSizeZ = ((*MaxHeightMeters - *MinHeightMeters) / *resolution) + 1;
+	unsigned int MatrixSizeY = (*MaxDepthMeters / 2 / *resolution) + 1;
+	unsigned int MatrixSizeX = (*MaxWidthMeters / 2 / *resolution) + 1;
+	unsigned int MatrixSize = MatrixSizeX * MatrixSizeY * MatrixSizeZ;
+
+	if (MatrixSize == 0) {
+		ShowMessage("Unable to calculate X,Y,Z sizes too small provide no grid.");
+		return true;
+	}
+
+	// now create the new array times 3 because there are 3 wires for each to make the triangle
+	Nec_Wires = new nec_wires[MatrixSize * 3];
+
+	// loop through all the possible feed point combinations
+	for (double Z = *MinHeightMeters; Z <= *MaxHeightMeters; Z += *resolution) {
+		for (double Y = 0; Y <= (*MaxDepthMeters / 2); Y += *resolution) {
+			// add resolution right away to X to now allow the feedpoint itself
+			for (double X = 0; X <= (*MaxWidthMeters / 2); X += *resolution) {
+				// need to calculate for proper number of segments needed
+				double WireLenFeedpoint = WireLength(-X, -Y, *FeedPointHeight, X, Y, *FeedPointHeight);
+				if (WireLenFeedpoint != 0) {
+					unsigned int FeedMinSegsFeedpoint = CalculateMinimumNumSegments(*BandBottom, &WireLenFeedpoint);
+					if (FeedMinSegsFeedpoint != 0) {
+						// need to correct for 0 segments
+						double SegsPerLength = WireLenFeedpoint / FeedMinSegsFeedpoint;
+						double WireLen2 = WireLength(-X, -Y, *FeedPointHeight, 0, 0, Z);
+						unsigned int FeedMinSegs2 = WireLen2 / SegsPerLength;
+						// make sure the wire lengths both have at least one segment and the triangle peak
+						// is not at the feedpoint height and the num of segments in the feedpoint is odd
+						if ((FeedMinSegs2 != 0) && (Z != *FeedPointHeight) && ((FeedMinSegsFeedpoint & 0x01) == 0x01)) {
+							Nec_Wires[WireCount].ID = WireCount;
+							// the feedpoint is always a mirrored image
+							Nec_Wires[WireCount].X1 = -X;
+							Nec_Wires[WireCount].Y1 = -Y;
+							Nec_Wires[WireCount].Z1 = *FeedPointHeight;
+							Nec_Wires[WireCount].X2 = X;
+							Nec_Wires[WireCount].Y2 = Y;
+							Nec_Wires[WireCount].Z2 = *FeedPointHeight;
+							/*
+							 double MinSegs = WireLen / SegsPerLength;
+							 unsigned int MinSegsAsint = MinSegs;
+							 */
+							// seg size * freq
+							Nec_Wires[WireCount].Segments = FeedMinSegsFeedpoint;
+							Nec_Wires[WireCount].Diameter = *WireDiameter;
+							Nec_Wires[WireCount].Enabled = true;
+							// increase the wire counter
+							WireCount++;
+							// now build the other two wires which go to the center Z point
+							Nec_Wires[WireCount].ID = WireCount;
+							// the feedpoint is always a mirrored image
+							Nec_Wires[WireCount].X1 = -X;
+							Nec_Wires[WireCount].Y1 = -Y;
+							Nec_Wires[WireCount].Z1 = *FeedPointHeight;
+							Nec_Wires[WireCount].X2 = 0;
+							Nec_Wires[WireCount].Y2 = 0;
+							Nec_Wires[WireCount].Z2 = Z;
+							/*
+							 double MinSegs = WireLen / SegsPerLength;
+							 unsigned int MinSegsAsint = MinSegs;
+							 */
+							// seg size * freq
+							Nec_Wires[WireCount].Segments = FeedMinSegs2;
+							Nec_Wires[WireCount].Diameter = *WireDiameter;
+							Nec_Wires[WireCount].Enabled = true;
+							// increase the wire counter
+							WireCount++;
+
+							Nec_Wires[WireCount].ID = WireCount;
+							// the feedpoint is always a mirrored image
+							Nec_Wires[WireCount].X1 = X;
+							Nec_Wires[WireCount].Y1 = Y;
+							Nec_Wires[WireCount].Z1 = *FeedPointHeight;
+							Nec_Wires[WireCount].X2 = 0;
+							Nec_Wires[WireCount].Y2 = 0;
+							Nec_Wires[WireCount].Z2 = Z;
+							/*
+							 double MinSegs = WireLen / SegsPerLength;
+							 unsigned int MinSegsAsint = MinSegs;
+							 */
+							// seg size * freq
+							Nec_Wires[WireCount].Segments = FeedMinSegs2;
+							Nec_Wires[WireCount].Diameter = *WireDiameter;
+							Nec_Wires[WireCount].Enabled = true;
+							// increase the wire counter
+							WireCount++;
+						}
+					}
+				}
+			}
+		}
+	}
+	ErrorMemo->Lines->Add("Band selected: " + BandName);
+	ErrorMemo->Lines->Add("Band Bottom: " + FormatFloat("0.000", *BandBottom));
+	// set the remaining NEC parameters
+	// create the wire grounds (if Z=0 is ground)
+	Nec_Ground[0].Z0ground = true;
+	// create the ground type
+	Nec_Grounds[0].GroundType = 2;
+	Nec_Grounds[0].NumberOfRadials = 0;
+	Nec_Grounds[0].RelativeDielectricConstant = 4;
+	Nec_Grounds[0].GroundConductivity = 0.003; // mhoms/m
+	// create the excitation
+	// set the wire which the feedpoint is attached to
+	Nec_Excitation[0].WireID = 0; // dipole model feed point wire is always zero
+	// chose the middle segment
+	Nec_Excitation[0].SourceTag = (Nec_Wires[0].Segments / 2) + 1;
+	Nec_Excitation[0].ExcitationType = 0;
+	Nec_Excitation[0].VoltageReal = 1;
+	Nec_Excitation[0].VoltageImag = 0;
+	Nec_Excitation[0].RelativeAdmittanceType = 0;
+	// create the radiation requirements
+	Nec_Radiation[0].Mode = 0;
+	Nec_Radiation[0].ThetaAngleCount = 1;
+	Nec_Radiation[0].PhiAngleCount = 1;
+	Nec_Radiation[0].ThetaStartAngle = 0;
+	Nec_Radiation[0].PhiStartAngle = 0;
+	Nec_Radiation[0].ThetaStepAngle = 5;
+	Nec_Radiation[0].PhiStepAngle = 5;
+	// set the total counts
+	Nec_Counts[0].WireCount = WireCount;
+	Nec_Counts[0].LoadsCount = 0;
+	Nec_Counts[0].GroundsCount = 1;
+	Nec_Counts[0].ExcitationsCount = 1;
+	Nec_Counts[0].FrequenciesCount = 1;
+	ErrorMemo->Lines->Add("WireCount " + IntToStr((__int64)WireCount));
+	// create the frequency
+	// set for frequency sweep
+	Nec_Frequency[0].StepType = 0;
+	const double Diameter = *WireDiameter;
+	/*TODO : Make sure to set the correct frequency choices*/
+	Nec_Frequency[0].FrequencyMHz = *Frequency;
+	Nec_Frequency[0].BandWidth = 0.0;
+	Nec_Frequency[0].FrequencyStepSize = 1.00;
+	if (Nec_Frequency[0].FrequencyStepSize) {
+		Nec_Frequency[0].FrequencySteps = Nec_Frequency[0].BandWidth / Nec_Frequency[0].FrequencyStepSize + 1;
+	}
+	else {
+		Nec_Frequency[0].FrequencySteps = 1;
+	}
+	// create the NEC file
+	// save the base file
+	WideString tempfilename = CreateNECFile(Nec_Counts, Nec_Wires, Nec_Ground, Nec_Loads, Nec_Grounds, Nec_Excitation,
+	  Nec_Frequency, Nec_Radiation);
+	// base model built now disable every wire combo after wires 0-2
+	for (unsigned int loopDis = 3; loopDis < WireCount; loopDis++) {
+		Nec_Wires[loopDis].Enabled = false;
+	}
+	return false;
+}
 void __fastcall TForm1::FormShow(TObject * Sender) {
 #ifdef _WIN64
 	Caption = "NECEvolve Alpha Development Version 0.1.10 Win64";
 #else
 	Caption = "NECEvolve Alpha Development Version 0.1.10 Win32";
 #endif
-
 }
-// ---------------------------------------------------------------------------
+

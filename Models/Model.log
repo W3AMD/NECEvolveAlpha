@@ -1,0 +1,6 @@
+_new.NEC wavelength=79.95 mtr.
+
+Error: Wire 1 (tag 1), radius (0) below 1e-6 meter
+Error: Wire 2 (tag 2), radius (0) below 1e-6 meter
+Error: Wire 3 (tag 3), radius (0) below 1e-6 meter
+Error: Wire 4 (tag 4), radius (0) below 1e-6 meter

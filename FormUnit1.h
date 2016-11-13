@@ -175,8 +175,8 @@ private: // User declarations
 		bool Support;
 		// the vectors below are used to keep track of which other wires are connected to
 		// this wire on either side
-		//std::vector<unsigned int>AttachedToX1Y1Z1ID;
-		//std::vector<unsigned int>AttachedToX2Y2Z2ID;
+		// std::vector<unsigned int>AttachedToX1Y1Z1ID;
+		// std::vector<unsigned int>AttachedToX2Y2Z2ID;
 	};
 
 	struct nec_wire_ground {
@@ -281,9 +281,15 @@ private: // User declarations
 	  double* MaxDepthMeters, double* resolution, double *FeedPointHeight, double* Frequency, double* WireDiameter,
 	  double* Scale, unsigned int BandSelection, double* BandBottom, double* BandLength);
 
+	bool __fastcall BuildDeltaModel(double* MaxHeightMeters, double* MinHeightMeters, double* MaxWidthMeters,
+	  double* MaxDepthMeters, double* resolution, double* FeedPointHeight, double* Frequency, double* WireDiameter,
+	  double* Scale, unsigned int BandSelection, double* BandBottom, double* BandLength);
+
 	bool BuildCube(double *MaxHeightMeters, double *MinHeightMeters, double *MaxWidthMeters, double* MaxDepthMeters,
 	  double* resolution, double *FeedPointHeight, double* Frequency, double* WireDiameter, double* Scale,
 	  unsigned int BandSelection, double* BandBottom, double* BandLength);
+
+	AnsiString GetBandName(unsigned int BandSelection);
 
 	WideString CreateNECFile(nec_counts* inNec_Counts, nec_wires* inNec_Wires, nec_wire_ground* inNec_Ground,
 	  nec_loads* inNec_Loads, nec_grounds* inNec_Grounds, nec_excitation* inNec_Excitation,
@@ -297,7 +303,7 @@ private: // User declarations
 	void SetBandParameters(unsigned int BandSelection, double* BandBottom, double*BandLength, double* Frequency,
 	  double* resolution, double* WireDiameter, double* Scale);
 
-	  bool graphUpdateFlag;
+	bool graphUpdateFlag;
 
 	vector<unsigned int>triedDisable;
 	vector<unsigned int>triedEnable;

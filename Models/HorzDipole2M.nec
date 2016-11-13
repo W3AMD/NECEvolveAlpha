@@ -1,0 +1,10 @@
+CM 
+CE
+SY Length=0.971892
+GW	1	1	Length/2	0	10	-(Length/2)	0	10	.0021
+GE	1
+GN	2	0	0	0	4.0000	0.0030
+EK
+EX	0	1	1	0	1	0	0
+FR	0	0	0	0	146	0
+EN

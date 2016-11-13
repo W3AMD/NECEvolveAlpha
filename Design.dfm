@@ -166,10 +166,10 @@ object DesignForm: TDesignForm
     Width = 177
     Height = 186
     Caption = 'Antenna Type'
-    Enabled = False
-    ItemIndex = 0
+    ItemIndex = 1
     Items.Strings = (
-      'Dipole (symetrical)')
+      'Dipole (symetrical)'
+      'Delta (bottom center fed)')
     TabOrder = 3
   end
   object SupportPoints: TGroupBox
